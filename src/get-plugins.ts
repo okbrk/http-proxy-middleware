@@ -1,16 +1,12 @@
-import type * as http from 'node:http';
-
+import type { Options, Plugin } from './types';
 import {
   debugProxyErrorsPlugin,
-  errorResponsePlugin,
   loggerPlugin,
+  errorResponsePlugin,
   proxyEventsPlugin,
-} from './plugins/default/index.js';
-import type { Options, Plugin } from './types.js';
+} from './plugins/default';
 
-export function getPlugins<TReq extends http.IncomingMessage, TRes extends http.ServerResponse>(
-  options: Options<TReq, TRes>,
-): Plugin<TReq, TRes>[] {
+export function getPlugins<TReq, TRes>(options: Options<TReq, TRes>): Plugin<TReq, TRes>[] {
   // don't load default errorResponsePlugin if user has specified their own
   const maybeErrorResponsePlugin = options.on?.error ? [] : [errorResponsePlugin];
 

@@ -1,4 +1,4 @@
-import type { Logger, Options } from './types.js';
+import { Logger, Options } from './types';
 
 /**
  * Compatibility matrix

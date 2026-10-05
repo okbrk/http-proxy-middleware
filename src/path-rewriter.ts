@@ -1,10 +1,6 @@
-import type { IncomingMessage, ServerResponse } from 'node:http';
-
-import isPlainObject from 'is-plain-obj';
-
-import { Debug } from './debug.js';
-import { HttpProxyMiddlewareError } from './errors.js';
-import type { PathRewriteConfig } from './types.js';
+import { isPlainObject } from 'is-plain-object';
+import { ERRORS } from './errors';
+import { Debug } from './debug';
 
 const debug = Debug.extend('path-rewriter');
 
@@ -12,11 +8,11 @@ type RewriteRule = { regex: RegExp; value: string };
 
 /**
  * Create rewrite function, to cache parsed rewrite rules.
+ *
+ * @param {Object} rewriteConfig
+ * @return {Function} Function to rewrite paths; This function should accept `path` (request.url) as parameter
  */
-export function createPathRewriter<
-  TReq extends IncomingMessage = IncomingMessage,
-  TRes extends ServerResponse = ServerResponse,
->(rewriteConfig: PathRewriteConfig<TReq, TRes> | undefined) {
+export function createPathRewriter(rewriteConfig) {
   let rulesCache: RewriteRule[];
 
   if (!isValidRewriteConfig(rewriteConfig)) {
@@ -31,7 +27,7 @@ export function createPathRewriter<
     return rewritePath;
   }
 
-  function rewritePath(path: string) {
+  function rewritePath(path) {
     let result = path;
 
     for (const rule of rulesCache) {
@@ -46,10 +42,7 @@ export function createPathRewriter<
   }
 }
 
-function isValidRewriteConfig<
-  TReq extends IncomingMessage = IncomingMessage,
-  TRes extends ServerResponse = ServerResponse,
->(rewriteConfig: PathRewriteConfig<TReq, TRes> | undefined): boolean {
+function isValidRewriteConfig(rewriteConfig) {
   if (typeof rewriteConfig === 'function') {
     return true;
   } else if (isPlainObject(rewriteConfig)) {
@@ -57,14 +50,11 @@ function isValidRewriteConfig<
   } else if (rewriteConfig === undefined || rewriteConfig === null) {
     return false;
   } else {
-    throw new HttpProxyMiddlewareError(
-      '[HPM] Invalid pathRewrite config. Expecting object with pathRewrite config or a rewrite function',
-      'HPM_INVALID_PATH_REWRITER_CONFIG',
-    );
+    throw new Error(ERRORS.ERR_PATH_REWRITER_CONFIG);
   }
 }
 
-function parsePathRewriteRules(rewriteConfig: PathRewriteConfig | undefined) {
+function parsePathRewriteRules(rewriteConfig: Record<string, string>) {
   const rules: RewriteRule[] = [];
 
   if (isPlainObject(rewriteConfig)) {

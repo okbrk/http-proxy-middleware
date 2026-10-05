@@ -1,6 +1,4 @@
-import { describe, expect, it } from 'vitest';
-
-import { getFunctionName } from '../../../src/utils/function.js';
+import { getFunctionName } from '../../../src/utils/function';
 
 describe('getFunctionName()', () => {
   it('should return Function name', () => {
@@ -9,8 +7,8 @@ describe('getFunctionName()', () => {
   });
 
   it('should return arrow Function name', () => {
-    const myArrowFunction = () => {};
-    expect(getFunctionName(myArrowFunction)).toBe('myArrowFunction');
+    const myFunction = () => {};
+    expect(getFunctionName(myFunction)).toBe('myFunction');
   });
 
   it('should return anonymous Function name', () => {

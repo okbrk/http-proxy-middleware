@@ -1,13 +1,13 @@
 # Proxy Events
 
-Subscribe to `httpxy` events: `error`, `proxyReq`, `proxyReqWs`, `proxyRes`, `open`, `close`, `start`, `end`, `econnreset`.
+Subscribe to `http-proxy` events: `error`, `proxyReq`, `proxyReqWs`, `proxyRes`, `open`, `close`, `start`, `end`, `econnreset`.
 
 ## on.error
 
-Subscribe to httpxy's [error event](https://github.com/unjs/httpxy#events).
+Subscribe to http-proxy's [error event](https://www.npmjs.com/package/http-proxy#listening-for-proxy-events).
 
 ```javascript
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const onError = function (err, req, res) {
   console.log('Something went wrong.');
@@ -16,7 +16,7 @@ const onError = function (err, req, res) {
 
 const options = {
   target: 'http://localhost:3000',
-  on: { error: onError },
+  on: { 'error', onError }
 };
 
 const apiProxy = createProxyMiddleware(options);
@@ -24,10 +24,10 @@ const apiProxy = createProxyMiddleware(options);
 
 ## on.proxyReq
 
-Subscribe to httpxy's [proxyReq event](https://github.com/unjs/httpxy#events).
+Subscribe to http-proxy's [proxyReq event](https://www.npmjs.com/package/http-proxy#listening-for-proxy-events).
 
 ```javascript
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const onProxyReq = function (proxyReq, req, res) {
   // add new header to request
@@ -44,10 +44,10 @@ const apiProxy = createProxyMiddleware(options);
 
 ## on.proxyReqWs
 
-Subscribe to httpxy's [proxyReqWs event](https://github.com/unjs/httpxy#events).
+Subscribe to http-proxy's [proxyReqWs event](https://www.npmjs.com/package/http-proxy#listening-for-proxy-events).
 
 ```javascript
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const onProxyReqWs = function (proxyReq, req, socket, options, head) {
   // add custom header
@@ -64,10 +64,10 @@ const apiProxy = createProxyMiddleware(options);
 
 ## on.proxyRes
 
-Subscribe to httpxy's [proxyRes event](https://github.com/unjs/httpxy#events).
+Subscribe to http-proxy's [proxyRes event](https://www.npmjs.com/package/http-proxy#listening-for-proxy-events).
 
 ```javascript
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const onProxyRes = function (proxyRes, req, res) {
   // add new header to response

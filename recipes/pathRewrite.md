@@ -12,7 +12,7 @@ Modify request paths before requests are send to the target.
 Rewrite paths
 
 ```javascript
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const options = {
   target: 'http://localhost:3000',
@@ -23,7 +23,7 @@ const options = {
 
 const apiProxy = createProxyMiddleware(options);
 
-// `/api/old-path/foo/bar` -> `http://localhost:3000/api/new-path/foo/bar`
+// `/old/api/foo/bar` -> `http://localhost:3000/new/api/foo/bar`
 ```
 
 ## remove paths
@@ -31,7 +31,7 @@ const apiProxy = createProxyMiddleware(options);
 Remove base path
 
 ```javascript
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const options = {
   target: 'http://localhost:3000',
@@ -50,7 +50,7 @@ const apiProxy = createProxyMiddleware(options);
 Add base path
 
 ```javascript
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const options = {
   target: 'http://localhost:3000',
@@ -71,9 +71,9 @@ Implement you own path rewrite logic.
 The unmodified path will be used, when rewrite function returns `undefined`
 
 ```javascript
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
-const rewriteFn = function (path, req, res, options) {
+const rewriteFn = function (path, req) {
   return path.replace('/api/foo', '/api/bar');
 };
 
@@ -85,6 +85,4 @@ const options = {
 const apiProxy = createProxyMiddleware(options);
 
 // `/api/foo/lorum/ipsum` -> `http://localhost:3000/api/bar/lorum/ipsum`
-
-// NOTE: `res` is undefined in WebSocket upgrade flows.
 ```

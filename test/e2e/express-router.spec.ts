@@ -1,9 +1,7 @@
-import express from 'express';
-import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
-
-import type { Filter, Options } from '../../src/index.js';
-import { createProxyMiddleware } from './test-kit.js';
+import * as express from 'express';
+import * as request from 'supertest';
+import { createProxyMiddleware } from './test-kit';
+import { Options } from '../../src/index';
 
 describe('Usage in Express', () => {
   let app: express.Express;
@@ -19,11 +17,11 @@ describe('Usage in Express', () => {
       // sub route config
       const sub = express.Router();
 
-      const filter: Filter = (pathname, req) => {
+      function filter(pathname, req) {
         const urlFilter = new RegExp('^/sub/api');
         const match = urlFilter.test(pathname);
         return match;
-      };
+      }
 
       /**
        * Mount proxy without 'path' in sub route
@@ -50,8 +48,8 @@ describe('Usage in Express', () => {
     });
   });
 
-  function jsonMiddleware(data: Record<string, unknown>) {
-    return (req: express.Request, res: express.Response) => {
+  function jsonMiddleware(data) {
+    return (req, res) => {
       res.json(data);
     };
   }

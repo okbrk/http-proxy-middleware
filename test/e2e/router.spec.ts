@@ -1,30 +1,30 @@
-// spell-checker: ignore evilbeta, evillocalhost
+import { createProxyMiddleware, createApp, createAppWithPath } from './test-kit';
+import { ErrorRequestHandler } from 'express';
+import * as request from 'supertest';
+import { getLocal, generateCACertificate, Mockttp } from 'mockttp';
+import * as getPort from 'get-port';
 
-import type { Agent as HttpAgent } from 'node:http';
-import { Agent as HttpsAgent } from 'node:https';
+const untrustedCACert = generateCACertificate({ bits: 1024 });
 
-import type { ErrorRequestHandler } from 'express';
-import type { CompletedRequest, Mockttp } from 'mockttp';
-import { generateCACertificate, getLocal } from 'mockttp';
-import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { createApp, createAppWithPath, createProxyMiddleware } from './test-kit.js';
-
-const untrustedCACert = generateCACertificate({ bits: 2048 });
-
-// NOTE: Seems to be not needed when using `ignoreHostHttpsErrors` in mockttp, but leaving it here just in case
-// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 describe('E2E router', () => {
   let targetServerA: Mockttp;
   let targetServerB: Mockttp;
   let targetServerC: Mockttp;
 
+  let targetPortA: number;
+  let targetPortB: number;
+  let targetPortC: number;
+
   beforeEach(async () => {
     targetServerA = getLocal({ https: await untrustedCACert });
     targetServerB = getLocal({ https: await untrustedCACert });
     targetServerC = getLocal({ https: await untrustedCACert });
+
+    targetPortA = await getPort();
+    targetPortB = await getPort();
+    targetPortC = await getPort();
 
     await targetServerA.forAnyRequest().thenPassThrough({ ignoreHostHttpsErrors: ['localhost'] });
     await targetServerB.forAnyRequest().thenPassThrough({ ignoreHostHttpsErrors: ['localhost'] });
@@ -32,17 +32,17 @@ describe('E2E router', () => {
 
     await targetServerA
       .forAnyRequest()
-      .thenCallback(({ protocol }) => ({ body: protocol === 'https' ? 'HTTPS A' : 'HTTP A' }));
+      .thenCallback(({ protocol }) => ({ body: protocol === 'https' ? 'A' : 'NOT HTTPS A' }));
     await targetServerB
       .forAnyRequest()
-      .thenCallback(({ protocol }) => ({ body: protocol === 'https' ? 'HTTPS B' : 'HTTP B' }));
+      .thenCallback(({ protocol }) => ({ body: protocol === 'https' ? 'B' : 'NOT HTTPS B' }));
     await targetServerC
       .forAnyRequest()
-      .thenCallback(({ protocol }) => ({ body: protocol === 'https' ? 'HTTPS C' : 'HTTP C' }));
+      .thenCallback(({ protocol }) => ({ body: protocol === 'https' ? 'C' : 'NOT HTTPS C' }));
 
-    await targetServerA.start();
-    await targetServerB.start();
-    await targetServerC.start();
+    await targetServerA.start(targetPortA);
+    await targetServerB.start(targetPortB);
+    await targetServerC.start(targetPortC);
   });
 
   afterEach(async () => {
@@ -55,59 +55,59 @@ describe('E2E router', () => {
     it('should work with a string', async () => {
       const app = createApp(
         createProxyMiddleware({
-          target: targetServerA.url,
+          target: `https://localhost:${targetPortA}`,
           secure: false,
           changeOrigin: true,
           router(req) {
-            return targetServerC.url;
+            return `https://localhost:${targetPortC}`;
           },
         }),
       );
 
       const agent = request(app);
       const response = await agent.get('/api').expect(200);
-      expect(response.text).toBe('HTTPS C');
+      expect(response.text).toBe('C');
     });
 
     it('should work with an object', async () => {
       const app = createApp(
         createProxyMiddleware({
-          target: targetServerA.url,
+          target: `https://localhost:${targetPortA}`,
           secure: false,
           changeOrigin: true,
           router(req) {
-            const target = new URL(targetServerC.url);
-            return { host: target.hostname, port: target.port, protocol: target.protocol };
+            return { host: 'localhost', port: targetPortC, protocol: 'https:' };
           },
         }),
       );
       const agent = request(app);
       const response = await agent.get('/api').expect(200);
-      expect(response.text).toBe('HTTPS C');
+      expect(response.text).toBe('C');
     });
 
     it('should work with an async callback', async () => {
       const app = createApp(
         createProxyMiddleware({
-          target: targetServerA.url,
+          target: `https://localhost:${targetPortA}`,
           secure: false,
           changeOrigin: true,
           router: async (req) => {
-            const target = new URL(targetServerC.url);
-            return { host: target.hostname, port: target.port, protocol: target.protocol };
+            return new Promise((resolve) =>
+              resolve({ host: 'localhost', port: targetPortC, protocol: 'https:' }),
+            );
           },
         }),
       );
 
       const agent = request(app);
       const response = await agent.get('/api').expect(200);
-      expect(response.text).toBe('HTTPS C');
+      expect(response.text).toBe('C');
     });
 
     it('should handle promise rejection in router', async () => {
       const app = createApp(
         createProxyMiddleware({
-          target: targetServerA.url,
+          target: `https://localhost:${targetPortA}`,
           secure: false,
           changeOrigin: true,
           router: async (req) => {
@@ -125,119 +125,40 @@ describe('E2E router', () => {
       expect(response.text).toBe('An error thrown in the router');
     });
 
-    it('missing a ":" in protocol will cause it to use https', async () => {
+    it('missing a : will cause it to use http', async () => {
       const app = createApp(
         createProxyMiddleware({
-          target: targetServerA.url,
+          target: `https://localhost:${targetPortA}`,
           secure: false,
           changeOrigin: true,
           router: async (req) => {
-            const target = new URL(targetServerC.url);
-            return { host: target.hostname, port: target.port, protocol: target.protocol };
+            return new Promise((resolve) =>
+              resolve({ host: 'localhost', port: targetPortC, protocol: 'https' }),
+            );
           },
         }),
       );
 
       const agent = request(app);
       const response = await agent.get('/api').expect(200);
-      expect(response.text).toBe('HTTPS C');
-    });
-
-    it('should allow using Express res.locals to update options.headers in router', async () => {
-      let completedRequest: CompletedRequest | undefined;
-
-      targetServerC.reset();
-      await targetServerC.forGet('/locals-options').thenCallback((req) => {
-        completedRequest = req;
-        return { statusCode: 200, body: 'OK - target C' };
-      });
-
-      const app = createApp(
-        (req, res, next) => {
-          res.locals.forwardedHeaderValue = app.locals.forwardedHeaderValue;
-          next();
-        },
-        createProxyMiddleware({
-          target: targetServerA.url,
-          secure: false,
-          changeOrigin: true,
-          router(req, res, options) {
-            options.headers = {
-              ...options.headers,
-              'x-forwarded-from-locals': res?.locals.forwardedHeaderValue,
-            };
-
-            return targetServerC.url;
-          },
-        }),
-      );
-
-      app.locals.forwardedHeaderValue = 'header-from-express-locals';
-
-      const agent = request(app);
-      const response = await agent.get('/locals-options').expect(200);
-
-      expect(response.text).toBe('OK - target C');
-      expect(completedRequest?.headers['x-forwarded-from-locals']).toBe(
-        'header-from-express-locals',
-      );
-    });
-
-    it('should allow updating agent dynamically in router', async () => {
-      const agentA: HttpAgent = new HttpsAgent({ keepAlive: true });
-      const agentB: HttpAgent = new HttpsAgent({ keepAlive: false });
-      const createConnectionSpyA = vi.spyOn(agentA, 'createConnection');
-      const createConnectionSpyB = vi.spyOn(agentB, 'createConnection');
-
-      targetServerA.reset();
-      targetServerB.reset();
-
-      await targetServerA.forGet('/api/a').thenReply(200, 'HTTPS A via agent A');
-      await targetServerB.forGet('/api/b').thenReply(200, 'HTTPS B via agent B');
-
-      const app = createApp(
-        createProxyMiddleware({
-          target: targetServerA.url,
-          secure: false,
-          changeOrigin: true,
-          router(req, res, options) {
-            if (req.url === '/api/a') {
-              options.agent = agentA;
-              return targetServerA.url;
-            }
-
-            options.agent = agentB;
-            return targetServerB.url;
-          },
-        }),
-      );
-
-      const agent = request(app);
-
-      const firstResponse = await agent.get('/api/a').expect(200);
-      const secondResponse = await agent.get('/api/b').expect(200);
-
-      expect(firstResponse.text).toBe('HTTPS A via agent A');
-      expect(secondResponse.text).toBe('HTTPS B via agent B');
-      expect(createConnectionSpyA).toHaveBeenCalledTimes(1);
-      expect(createConnectionSpyB).toHaveBeenCalledTimes(1);
+      expect(response.text).toBe('NOT HTTPS C');
     });
   });
 
   describe('router with proxyTable', () => {
-    let agent: request.Agent;
+    let agent;
 
     beforeEach(() => {
       const app = createAppWithPath(
         '/',
         createProxyMiddleware({
-          target: targetServerA.url,
+          target: `https://localhost:${targetPortA}`,
           secure: false,
           changeOrigin: true,
           router: {
-            'alpha.localhost:6000': targetServerA.url,
-            'beta.localhost:6000': targetServerB.url,
-            'localhost:6000/api': targetServerC.url,
+            'alpha.localhost:6000': `https://localhost:${targetPortA}`,
+            'beta.localhost:6000': `https://localhost:${targetPortB}`,
+            'localhost:6000/api': `https://localhost:${targetPortC}`,
           },
         }),
       );
@@ -248,37 +169,25 @@ describe('E2E router', () => {
     it('should proxy to option.target', async () => {
       const response = await agent.get('/api').expect(200);
 
-      expect(response.text).toBe('HTTPS A');
+      expect(response.text).toBe('A');
     });
 
     it('should proxy when host is "alpha.localhost"', async () => {
       const response = await agent.get('/api').set('host', 'alpha.localhost:6000').expect(200);
 
-      expect(response.text).toBe('HTTPS A');
+      expect(response.text).toBe('A');
     });
 
     it('should proxy when host is "beta.localhost"', async () => {
       const response = await agent.get('/api').set('host', 'beta.localhost:6000').expect(200);
 
-      expect(response.text).toBe('HTTPS B');
-    });
-
-    it('should not proxy host-only target when host is a crafted superstring', async () => {
-      const response = await agent.get('/api').set('host', 'evilbeta.localhost:6000').expect(200);
-
-      expect(response.text).toBe('HTTPS A');
+      expect(response.text).toBe('B');
     });
 
     it('should proxy with host & path config: "localhost:6000/api"', async () => {
       const response = await agent.get('/api').set('host', 'localhost:6000').expect(200);
 
-      expect(response.text).toBe('HTTPS C');
-    });
-
-    it('should not proxy to host+path target when host is a crafted superstring', async () => {
-      const response = await agent.get('/api').set('host', 'evillocalhost:6000').expect(200);
-
-      expect(response.text).toBe('HTTPS A');
+      expect(response.text).toBe('C');
     });
   });
 });

@@ -1,9 +1,6 @@
-import type { Mockttp } from 'mockttp';
-import { getLocal } from 'mockttp';
-import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
-import { createApp, createProxyMiddleware } from './test-kit.js';
+import { createProxyMiddleware, createApp } from './test-kit';
+import * as request from 'supertest';
+import { getLocal, Mockttp } from 'mockttp';
 
 describe('E2E pathRewrite', () => {
   let mockTargetServer: Mockttp;
@@ -26,7 +23,7 @@ describe('E2E pathRewrite', () => {
       const agent = request(
         createApp(
           createProxyMiddleware({
-            target: mockTargetServer.url,
+            target: `http://localhost:${mockTargetServer.port}`,
             pathRewrite: {
               '^/foobar/api/': '/api/',
             },
@@ -49,7 +46,7 @@ describe('E2E pathRewrite', () => {
       const agent = request(
         createApp(
           createProxyMiddleware({
-            target: mockTargetServer.url,
+            target: `http://localhost:${mockTargetServer.port}`,
             pathRewrite(path, req) {
               return path.replace('/foobar', '');
             },
@@ -59,33 +56,6 @@ describe('E2E pathRewrite', () => {
 
       const response = await agent.get('/foobar/api/lorum/ipsum').expect(200);
       expect(response.text).toBe('/API RESPONSE AFTER PATH REWRITE FUNCTION');
-    });
-
-    it('should expose res and options to rewrite function', async () => {
-      mockTargetServer
-        .forGet('/api/lorum/ipsum')
-        .thenReply(200, '/API RESPONSE AFTER PATH REWRITE FUNCTION');
-
-      let capturedRes: unknown;
-      let capturedOptions: { target?: unknown } | undefined;
-
-      const agent = request(
-        createApp(
-          createProxyMiddleware({
-            target: mockTargetServer.url,
-            pathRewrite(path, req, res, options) {
-              capturedRes = res;
-              capturedOptions = options;
-              return path;
-            },
-          }),
-        ),
-      );
-
-      await agent.get('/api/lorum/ipsum').expect(200);
-
-      expect(capturedRes).toBeDefined();
-      expect(capturedOptions?.target).toBe(mockTargetServer.url);
     });
   });
 
@@ -98,7 +68,7 @@ describe('E2E pathRewrite', () => {
       const agent = request(
         createApp(
           createProxyMiddleware({
-            target: mockTargetServer.url,
+            target: `http://localhost:${mockTargetServer.port}`,
             pathRewrite(path, req) {
               return undefined;
             },

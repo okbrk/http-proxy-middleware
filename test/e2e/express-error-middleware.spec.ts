@@ -1,9 +1,5 @@
-import type express from 'express';
-import type { ProxyTarget } from 'httpxy';
-import request from 'supertest';
-import { describe, expect, it } from 'vitest';
-
-import { createApp, createProxyMiddleware } from './test-kit.js';
+import { createApp, createProxyMiddleware } from './test-kit';
+import * as request from 'supertest';
 
 describe('express error middleware', () => {
   it('should propagate error to express', async () => {
@@ -11,15 +7,15 @@ describe('express error middleware', () => {
 
     const proxyMiddleware = createProxyMiddleware({
       changeOrigin: true,
-      router: (req) => undefined as unknown as ProxyTarget, // Trigger "Error: Must provide a proper URL as target"
+      router: (req) => undefined, // Trigger "Error: Must provide a proper URL as target"
     });
 
-    const errorMiddleware: express.ErrorRequestHandler = (err, req, res, next) => {
+    const errorMiddleware = (err, req, res, next) => {
       httpProxyError = err;
       res.status(504).send('Something broke!');
     };
 
-    const app = createApp(proxyMiddleware, errorMiddleware as any);
+    const app = createApp(proxyMiddleware, errorMiddleware);
     const response = await request(app).get('/get').expect(504);
 
     expect(httpProxyError?.message).toBe('Must provide a proper URL as target');

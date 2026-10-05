@@ -1,12 +1,8 @@
-// @ts-check
 /**
  * Module dependencies.
  */
-import * as http from 'node:http';
-
-import open from 'open';
-
-import { createProxyMiddleware } from '#http-proxy-middleware';
+const http = require('node:http');
+const { createProxyMiddleware } = require('../../dist'); // require('http-proxy-middleware');
 
 /**
  * Configure proxy middleware
@@ -27,7 +23,7 @@ server.listen(3000);
 console.log('[DEMO] Server: listening on port 3000');
 console.log('[DEMO] Opening: http://localhost:3000/users');
 
-open('http://localhost:3000/users');
+require('open')('http://localhost:3000/users');
 
 process.on('SIGINT', () => server.close());
 process.on('SIGTERM', () => server.close());

@@ -1,11 +1,8 @@
 /**
  * Module dependencies.
  */
-import browserSync from 'browser-sync';
-
-import { createProxyMiddleware } from '#http-proxy-middleware';
-
-const app = browserSync.create();
+const browserSync = require('browser-sync').create();
+const { createProxyMiddleware } = require('../../dist'); // require('http-proxy-middleware');
 
 /**
  * Configure proxy middleware
@@ -20,17 +17,17 @@ const jsonPlaceholderProxy = createProxyMiddleware({
 /**
  * Add the proxy to browser-sync
  */
-app.init({
+browserSync.init({
   server: {
     baseDir: './',
+    port: 3000,
     middleware: [jsonPlaceholderProxy],
   },
-  port: 3000,
   startPath: '/users',
 });
 
 console.log('[DEMO] Server: listening on port 3000');
 console.log('[DEMO] Opening: http://localhost:3000/users');
 
-process.on('SIGINT', () => app.exit());
-process.on('SIGTERM', () => app.exit());
+process.on('SIGINT', () => browserSync.exit());
+process.on('SIGTERM', () => browserSync.exit());

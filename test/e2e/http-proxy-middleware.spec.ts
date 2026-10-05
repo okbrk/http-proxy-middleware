@@ -1,15 +1,10 @@
-import { Agent as HttpAgent } from 'node:http';
-
-import bodyParser from 'body-parser';
+import { createProxyMiddleware, createApp, createAppWithPath, fixRequestBody } from './test-kit';
+import * as request from 'supertest';
+import { Mockttp, getLocal, CompletedRequest } from 'mockttp';
+import type * as http from 'http';
 import type * as express from 'express';
-import type { CompletedRequest, Mockttp } from 'mockttp';
-import { getLocal } from 'mockttp';
-import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import type { Filter, Logger } from '../../src/types.js';
-import { createMockRequest, createMockResponse } from '../test-utils.js';
-import { createApp, createAppWithPath, createProxyMiddleware, fixRequestBody } from './test-kit.js';
+import * as bodyParser from 'body-parser';
+import type { Logger } from '../../src/types';
 
 describe('E2E http-proxy-middleware', () => {
   describe('http-proxy-middleware creation', () => {
@@ -24,9 +19,11 @@ describe('E2E http-proxy-middleware', () => {
 
   describe('pathFilter matching', () => {
     describe('do not proxy', () => {
-      const mockReq = createMockRequest({ url: '/foo/bar' });
-      const mockRes = createMockResponse();
-      const mockNext: express.NextFunction = vi.fn();
+      const mockReq: http.IncomingMessage = {
+        url: '/foo/bar',
+      } as http.IncomingMessage;
+      const mockRes: http.ServerResponse = {} as http.ServerResponse;
+      const mockNext: express.NextFunction = jest.fn();
 
       beforeEach(() => {
         const middleware = createProxyMiddleware({
@@ -38,7 +35,7 @@ describe('E2E http-proxy-middleware', () => {
       });
 
       it('should not proxy requests when request url does not match pathFilter', () => {
-        expect(mockNext).toHaveBeenCalled();
+        expect(mockNext).toBeCalled();
       });
     });
   });
@@ -61,7 +58,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: '/api',
             }),
           ),
@@ -80,7 +77,7 @@ describe('E2E http-proxy-middleware', () => {
           .withExactQuery('?q=1&r=[2,3]')
           .thenReply(200, 'OK');
 
-        const response = await request(mockTargetServer.url)
+        const response = await request(`http://localhost:${mockTargetServer.port}`)
           .get(`/api/b/c/dp?q=1&r=[2,3]#s`)
           .expect(200);
 
@@ -94,7 +91,7 @@ describe('E2E http-proxy-middleware', () => {
           createApp(
             bodyParser.urlencoded({ extended: false }),
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: '/api',
               on: {
                 proxyReq: fixRequestBody,
@@ -105,7 +102,7 @@ describe('E2E http-proxy-middleware', () => {
 
         await mockTargetServer.forPost('/api').thenCallback(async (req) => {
           expect(await req.body.getText()).toBe('foo=bar&bar=baz');
-          return { statusCode: 200 };
+          return { status: 200 };
         });
         await agent.post('/api').send('foo=bar').send('bar=baz').expect(200);
       });
@@ -115,7 +112,7 @@ describe('E2E http-proxy-middleware', () => {
           createApp(
             bodyParser.json(),
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: '/api',
               on: {
                 proxyReq: fixRequestBody,
@@ -126,136 +123,22 @@ describe('E2E http-proxy-middleware', () => {
 
         await mockTargetServer.forPost('/api').thenCallback(async (req) => {
           expect(await req.body.getJson()).toEqual({ foo: 'bar', bar: 'baz', doubleByte: '文' });
-          return { statusCode: 200 };
+          return { status: 200 };
         });
         await agent.post('/api').send({ foo: 'bar', bar: 'baz', doubleByte: '文' }).expect(200);
-      });
-
-      it('should proxy modified POST body from proxyReq when bodyParser is used (#942)', async () => {
-        agent = request(
-          createApp(
-            bodyParser.json(),
-            createProxyMiddleware({
-              target: mockTargetServer.url,
-              pathFilter: '/api',
-              on: {
-                proxyReq: (proxyReq, req) => {
-                  req.body.search = `${req.body.search} + context-filter`;
-                  req.body.top = 25;
-                  req.body.filters = ['public', 'active'];
-                  proxyReq.setHeader('x-api-key', 'server-secret');
-                  fixRequestBody(proxyReq, req);
-                },
-              },
-            }),
-          ),
-        );
-
-        await mockTargetServer.forPost('/api').thenCallback(async (req) => {
-          expect(await req.body.getJson()).toEqual({
-            search: 'hello + context-filter',
-            top: 25,
-            filters: ['public', 'active'],
-          });
-          expect(req.headers['x-api-key']).toBe('server-secret');
-          return { statusCode: 200, body: 'OK' };
-        });
-
-        await agent.post('/api').send({ search: 'hello', top: 5 }).expect(200, 'OK');
-      });
-
-      it('should detect bodyParser usage leading to ECONNRESET error', async () => {
-        const logSpy = vi.spyOn(console, 'error');
-
-        agent = request(
-          createApp(
-            bodyParser.json(),
-            createProxyMiddleware({
-              target: mockTargetServer.url,
-              pathFilter: '/api',
-            }),
-          ),
-        );
-
-        try {
-          await mockTargetServer.forPost('/api').thenResetConnection();
-          await agent.post('/api').send({ foo: 'bar', bar: 'baz', doubleByte: '文' }).expect(504);
-
-          expect(logSpy).toHaveBeenCalledTimes(1);
-          expect(logSpy.mock.calls[0][0]).toContain('[ERR_HPM.GH40]');
-        } finally {
-          logSpy.mockRestore();
-        }
-      });
-
-      it('should reject CRLF multipart injection when fixRequestBody serializes multipart', async () => {
-        const targetSpy = vi.fn();
-        const loggerSpy: Logger = {
-          info: vi.fn(),
-          warn: vi.fn(),
-          error: vi.fn(),
-        };
-
-        agent = request(
-          createApp(
-            bodyParser.urlencoded({ extended: false }),
-            (req, res, next) => {
-              if (req.body?.role === 'admin') {
-                res.status(403).send('gateway: role=admin forbidden');
-                return;
-              }
-              next();
-            },
-            createProxyMiddleware({
-              target: mockTargetServer.url,
-              pathFilter: '/api',
-              on: {
-                proxyReq: (proxyReq, req) => {
-                  proxyReq.setHeader('Content-Type', 'multipart/form-data; boundary=BB');
-                  fixRequestBody(proxyReq, req);
-                },
-              },
-              logger: loggerSpy,
-            }),
-          ),
-        );
-
-        await mockTargetServer.forPost('/api').thenCallback(async () => {
-          targetSpy();
-          return { statusCode: 200 };
-        });
-
-        const injectedValue =
-          'alice\r\n--BB\r\nContent-Disposition: form-data; name="role"\r\n\r\nadmin\r\n--BB--';
-
-        const response = await agent
-          .post('/api')
-          .set('Content-Type', 'application/x-www-form-urlencoded')
-          .send(`user=${encodeURIComponent(injectedValue)}`)
-          .expect(400);
-
-        expect(response.text).toContain('Error occurred while trying to proxy');
-        expect(targetSpy).toHaveBeenCalledTimes(0);
-        expect(loggerSpy.error).toHaveBeenCalledWith(
-          '[HPM] Error occurred while proxying request %s to %s [%s] (%s)',
-          expect.anything(),
-          expect.anything(),
-          'HPM_ERR_INVALID_MULTIPART_FIELD_VALUE',
-          'https://nodejs.org/api/errors.html#errors_common_system_errors',
-        );
       });
     });
 
     describe('custom pathFilter matcher/filter', () => {
       it('should have response body: "HELLO WEB"', async () => {
-        const filter: Filter = (path, req) => {
+        const filter = (path, req) => {
           return true;
         };
 
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: filter,
             }),
           ),
@@ -267,14 +150,14 @@ describe('E2E http-proxy-middleware', () => {
       });
 
       it('should not proxy when filter returns false', async () => {
-        const filter: Filter = (path, req) => {
+        const filter = (path, req) => {
           return false;
         };
 
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: filter,
             }),
           ),
@@ -287,20 +170,20 @@ describe('E2E http-proxy-middleware', () => {
 
       it('should not proxy when filter throws Error', async () => {
         const myError = new Error('MY_ERROR');
-        const filter: Filter = (path, req) => {
+        const filter = (path, req) => {
           throw myError;
         };
 
         const logger: Logger = {
-          info: vi.fn(),
-          warn: vi.fn(),
-          error: vi.fn(),
+          info: jest.fn(),
+          warn: jest.fn(),
+          error: jest.fn(),
         };
 
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: filter,
               logger: logger,
             }),
@@ -319,7 +202,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: ['/api', '/ajax'],
             }),
           ),
@@ -349,7 +232,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: '/api/**',
             }),
           ),
@@ -368,7 +251,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: ['**/*.html', '!**.json'],
             }),
           ),
@@ -393,7 +276,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: '/api',
               headers: { host: 'foobar.dev' },
             }),
@@ -428,36 +311,6 @@ describe('E2E http-proxy-middleware', () => {
 
       it('should handle errors when host is not reachable', async () => {
         const response = await agent.get(`/api/some/endpoint`).expect(504);
-        expect(response.status).toBe(504);
-      });
-
-      it('should handle ECONNRESET errors from the target server', async () => {
-        await mockTargetServer.forGet('/api/some/endpoint').thenResetConnection();
-
-        const resetAgent = request(
-          createApp(
-            createProxyMiddleware({
-              target: mockTargetServer.url,
-            }),
-          ),
-        );
-
-        const response = await resetAgent.get(`/api/some/endpoint`).expect(504);
-        expect(response.status).toBe(504);
-      });
-
-      it('should handle closed connections from the target server', async () => {
-        await mockTargetServer.forGet('/api/some/endpoint').thenCloseConnection();
-
-        const closeAgent = request(
-          createApp(
-            createProxyMiddleware({
-              target: mockTargetServer.url,
-            }),
-          ),
-        );
-
-        const response = await closeAgent.get(`/api/some/endpoint`).expect(504);
         expect(response.status).toBe(504);
       });
     });
@@ -497,7 +350,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: '/api',
               on: {
                 proxyRes: (proxyRes, req, res) => {
@@ -537,7 +390,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: '/api',
               on: {
                 proxyReq: (proxyReq, req, res) => {
@@ -560,67 +413,6 @@ describe('E2E http-proxy-middleware', () => {
 
         expect(completedRequest?.headers['x-added']).toBe('added-from-hpm');
       });
-
-      it('should keep header mutation safe under keep-alive socket contention (#472)', async () => {
-        const upstreamAgent = new HttpAgent({
-          keepAlive: true,
-          maxSockets: 1,
-          maxFreeSockets: 1,
-        });
-        const completedRequests: CompletedRequest[] = [];
-        const proxyErrors: Error[] = [];
-
-        const app = createApp(
-          createProxyMiddleware({
-            target: mockTargetServer.url,
-            pathFilter: '/api',
-            agent: upstreamAgent,
-            on: {
-              proxyReq: (proxyReq) => {
-                proxyReq.setHeader('x-added', 'added-from-hpm');
-              },
-              error: (error, req, res) => {
-                proxyErrors.push(error);
-
-                if ('headersSent' in res && 'writeHead' in res && !res.headersSent) {
-                  res.writeHead(500);
-                  res.end('proxy error');
-                }
-              },
-            },
-          }),
-        );
-        const server = app.listen(0);
-
-        // Start the shared server first so concurrent SuperTest requests do not each register startup listeners.
-        await new Promise<void>((resolve) => server.once('listening', resolve));
-        agent = request(server);
-
-        await mockTargetServer.forGet('/api/socket-contention').thenCallback(async (req) => {
-          completedRequests.push(req);
-          await new Promise((resolve) => setTimeout(resolve, 50));
-
-          return { statusCode: 200, body: 'OK' };
-        });
-
-        try {
-          const responses = await Promise.all(
-            Array.from({ length: 20 }, () => agent.get('/api/socket-contention').expect(200)),
-          );
-
-          expect(responses).toHaveLength(20);
-          expect(proxyErrors).toEqual([]);
-          expect(completedRequests).toHaveLength(20);
-          expect(
-            completedRequests.every((req) => req.headers['x-added'] === 'added-from-hpm'),
-          ).toBe(true);
-        } finally {
-          upstreamAgent.destroy();
-          await new Promise<void>((resolve, reject) =>
-            server.close((error) => (error ? reject(error) : resolve())),
-          );
-        }
-      }, 15000);
     });
 
     describe('option.pathRewrite', () => {
@@ -628,7 +420,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathRewrite: {
                 '^/api': '/rest',
                 '^/remove': '',
@@ -656,7 +448,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createAppWithPath(
             '/api',
-            createProxyMiddleware({ target: `${mockTargetServer.url}/api` }),
+            createProxyMiddleware({ target: `http://localhost:${mockTargetServer.port}/api` }),
           ),
         );
       });
@@ -685,7 +477,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createApp(
             createProxyMiddleware({
-              target: mockTargetServer.url,
+              target: `http://localhost:${mockTargetServer.port}`,
               pathFilter: '/api',
               logger: customLogger,
             }),
@@ -698,7 +490,7 @@ describe('E2E http-proxy-middleware', () => {
         expect(logMessages).not.toBeUndefined();
         expect(logMessages.length).toBe(1);
         expect(logMessages.at(0)).toBe(
-          `[HPM] GET /api/foo/bar -> ${mockTargetServer.url}/api/foo/bar [200]`,
+          `[HPM] GET /api/foo/bar -> http://localhost:${mockTargetServer.port}/api/foo/bar [200]`,
         );
       });
 
@@ -706,7 +498,7 @@ describe('E2E http-proxy-middleware', () => {
         agent = request(
           createApp(
             createProxyMiddleware({
-              router: () => mockTargetServer.url,
+              router: () => `http://localhost:${mockTargetServer.port}`,
               pathFilter: '/api',
               logger: customLogger,
             }),
@@ -719,7 +511,7 @@ describe('E2E http-proxy-middleware', () => {
         expect(logMessages).not.toBeUndefined();
         expect(logMessages.length).toBe(1);
         expect(logMessages.at(0)).toBe(
-          `[HPM] GET /api/foo/bar -> ${mockTargetServer.url}/api/foo/bar [200]`,
+          `[HPM] GET /api/foo/bar -> http://localhost:${mockTargetServer.port}/api/foo/bar [200]`,
         );
       });
     });

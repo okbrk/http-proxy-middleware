@@ -1,6 +1,4 @@
-import { describe, expect, it } from 'vitest';
-
-import { getLogger } from '../../src/logger.js';
+import { getLogger } from '../../src/logger';
 
 describe('Logger', () => {
   it('should return global "console" logger when configured in Options', () => {

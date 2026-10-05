@@ -1,16 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unused-expressions */
-import * as http from 'node:http';
 
-import express from 'express';
-import { beforeEach, describe, expect, it } from 'vitest';
-
-import {
-  definePlugin,
-  fixRequestBody,
-  createProxyMiddleware as middleware,
-  responseInterceptor,
-} from '../src/index.js';
-import type { Options, RequestHandler } from '../src/types.js';
+import * as express from 'express';
+import * as http from 'http';
+import { createProxyMiddleware as middleware, fixRequestBody, responseInterceptor } from '../src';
+import type { Options, RequestHandler } from '../src/types';
 
 describe('http-proxy-middleware TypeScript Types', () => {
   let options: Options;
@@ -52,32 +45,14 @@ describe('http-proxy-middleware TypeScript Types', () => {
       expect(proxy).toBeDefined();
     });
 
-    it('should create proxy with truthy filter', () => {
-      const proxy = middleware({
-        ...options,
-        pathFilter: (path, req) => path.match('^/api') && req.method === 'GET',
-      });
-      expect(proxy).toBeDefined();
-    });
-
-    it('should create proxy with truthy regex match filter', () => {
-      const proxy = middleware({ ...options, pathFilter: (path, req) => path.match('^/api') });
-      expect(proxy).toBeDefined();
-    });
-
-    it('should create proxy with truthy regex test filter', () => {
-      const proxy = middleware({ ...options, pathFilter: (path, req) => /^\/api/.test(path) });
-      expect(proxy).toBeDefined();
-    });
-
     it('should create proxy with manual websocket upgrade function', () => {
       const proxy = middleware({ ...options, pathFilter: (path, req) => true });
       expect(proxy.upgrade).toBeDefined();
     });
   });
 
-  describe('`httpxy` options', () => {
-    it('should extend from `httpxy` options', () => {
+  describe('http-proxy options', () => {
+    it('should extend from http-proxy options', () => {
       options = {
         target: 'http://example',
         ws: true,
@@ -111,22 +86,12 @@ describe('http-proxy-middleware TypeScript Types', () => {
       });
 
       it('should have router Type with function', () => {
-        options = {
-          router: (req, res, options) => {
-            options.headers = { ...options.headers, 'x-added-header': 'value' };
-            return '/path';
-          },
-        };
+        options = { router: (path) => '/path' };
         expect(options).toBeDefined();
       });
 
       it('should have router Type with async function', () => {
-        options = {
-          router: async (req, res, options) => {
-            options.headers = { ...options.headers, 'x-added-header': 'value' };
-            return '/path';
-          },
-        };
+        options = { router: async (path) => '/path' };
         expect(options).toBeDefined();
       });
     });
@@ -134,33 +99,6 @@ describe('http-proxy-middleware TypeScript Types', () => {
     describe('logger', () => {
       it('should have logger option', () => {
         options = { logger: console };
-        expect(options).toBeDefined();
-      });
-
-      it('should allow custom logger option', () => {
-        const customLogger = {
-          info: () => {},
-          warn: () => {},
-          error: () => {},
-        };
-        options = { logger: customLogger };
-        expect(options).toBeDefined();
-      });
-
-      it('should fail when custom logger has missing log function', () => {
-        const customLogger = {
-          info: () => {},
-          // warn: () => {},
-          error: () => {},
-        };
-        // @ts-expect-error explanation: should error when customLogger has a missing log function
-        options = { logger: customLogger };
-        expect(options).toBeDefined();
-      });
-
-      it('should fail when invalid logger is provided', () => {
-        // @ts-expect-error explanation: should error when invalid logger is provided
-        options = { logger: 500 };
         expect(options).toBeDefined();
       });
     });
@@ -212,25 +150,9 @@ describe('http-proxy-middleware TypeScript Types', () => {
         middleware({
           router: (req) => req.params,
           pathFilter: (pathname, req) => !!req.params,
-          pathRewrite: (path, req, res, options) => {
-            req.params;
-
-            // @ts-expect-error: should error when request is typed as `any`
-            req.unknownProperty;
-
-            // @ts-expect-error: should error when response is typed as `any`
-            res?.unknownProperty;
-
-            return path + (res?.locals ?? '');
-          },
           on: {
             error(error, req, res, target) {
               req.params;
-
-              // @ts-expect-error: should error when request is typed as `any`
-              req.unknownProperty;
-              // @ts-expect-error: should error when response is typed as `any`
-              res.unknownProperty;
 
               // https://www.typescriptlang.org/docs/handbook/2/narrowing.html
               if (res instanceof http.ServerResponse) {
@@ -243,20 +165,13 @@ describe('http-proxy-middleware TypeScript Types', () => {
             },
             proxyReqWs(proxyReq, req, socket, options, head) {
               req.params;
-              head.byteLength;
             },
             proxyRes(proxyRes, req, res) {
               req.params;
-              proxyRes.statusCode;
-
               res.status(200).send('OK');
             },
             close(proxyRes, proxySocket, proxyHead) {
               proxyRes.params;
-              proxyHead.byteLength;
-
-              // @ts-expect-error explanation: websocket head should be a Buffer
-              proxyHead.params;
             },
             start(req, res, target) {
               req.params;
@@ -265,7 +180,6 @@ describe('http-proxy-middleware TypeScript Types', () => {
             end(req, res, proxyRes) {
               req.params;
               res.status(200).send('OK');
-              proxyRes.statusCode;
               proxyRes.params;
             },
             econnreset(error, req, res, target) {
@@ -302,19 +216,13 @@ describe('http-proxy-middleware TypeScript Types', () => {
             },
             proxyReqWs(proxyReq, req, socket, options, head) {
               req.params;
-              head.byteLength;
             },
             proxyRes(proxyRes, req, res) {
               req.params;
-
-              proxyRes.statusCode;
-              proxyRes.params;
-
               res.status(200).send('OK');
             },
             close(proxyRes, proxySocket, proxyHead) {
               proxyRes.params;
-              proxyHead.byteLength;
             },
             start(req, res, target) {
               req.params;
@@ -323,7 +231,6 @@ describe('http-proxy-middleware TypeScript Types', () => {
             end(req, res, proxyRes) {
               req.params;
               res.status(200).send('OK');
-              proxyRes.statusCode;
               proxyRes.params;
             },
             econnreset(error, req, res, target) {
@@ -368,13 +275,10 @@ describe('http-proxy-middleware TypeScript Types', () => {
           },
           proxyRes(proxyRes, req, res) {
             req.myRequestParams;
-            proxyRes.statusCode;
-            proxyRes.myRequestParams;
             res.myResponseParams;
           },
           close(proxyRes, proxySocket, proxyHead) {
             proxyRes.myRequestParams;
-            proxyHead.byteLength;
           },
           start(req, res, target) {
             req.myRequestParams;
@@ -383,7 +287,6 @@ describe('http-proxy-middleware TypeScript Types', () => {
           end(req, res, proxyRes) {
             req.myRequestParams;
             res.myResponseParams;
-            proxyRes.statusCode;
             proxyRes.myRequestParams;
           },
           econnreset(error, req, res, target) {
@@ -414,11 +317,6 @@ describe('http-proxy-middleware TypeScript Types', () => {
           proxyRes: responseInterceptor(async (buffer, proxyRes, req, res) => {
             req.myRequestParams;
             res.myResponseParams;
-
-            // @ts-expect-error: should error when request is typed as `any`
-            req.unknownProperty;
-            // @ts-expect-error: should error when response is typed as `any`
-            res.unknownProperty;
             return buffer;
           }),
         },
@@ -445,12 +343,6 @@ describe('http-proxy-middleware TypeScript Types', () => {
           (proxyServer, options) => {
             proxyServer.on('proxyReq', (proxyReq, req, res, options) => {
               req.params;
-
-              // @ts-expect-error: should error when request is typed as `any`
-              req.unknownProperty;
-              // @ts-expect-error: should error when response is typed as `any`
-              res.unknownProperty;
-
               res.status(200).send('OK');
             });
           },
@@ -476,12 +368,6 @@ describe('http-proxy-middleware TypeScript Types', () => {
                 responseInterceptor(async (buffer, proxyRes, req, res) => {
                   req.params;
                   res.status(200).send('OK');
-
-                  // @ts-expect-error: should error when request is typed as `any`
-                  req.unknownProperty;
-                  // @ts-expect-error: should error when response is typed as `any`
-                  res.unknownProperty;
-
                   return buffer;
                 }),
               );
@@ -491,48 +377,6 @@ describe('http-proxy-middleware TypeScript Types', () => {
       );
 
       expect(app).toBeDefined();
-    });
-  });
-
-  describe('definePlugin()', () => {
-    it('should define plugin with correct types', () => {
-      const myPlugin = definePlugin((proxyServer, options) => {
-        proxyServer.on('proxyReq', (proxyReq, req, res, options) => {
-          req.url;
-          res.statusCode;
-
-          // @ts-expect-error: should error when request is typed as `any`
-          req.unknownProperty;
-          // @ts-expect-error: should error when response is typed as `any`
-          res.unknownProperty;
-        });
-      });
-
-      expect(myPlugin).toBeDefined();
-    });
-
-    it('should define plugin with custom req & res types', () => {
-      interface MyRequest extends http.IncomingMessage {
-        myRequestParams: { [key: string]: string };
-      }
-
-      interface MyResponse extends http.ServerResponse {
-        myResponseParams: { [key: string]: string };
-      }
-
-      const myPlugin = definePlugin<MyRequest, MyResponse>((proxyServer, options) => {
-        proxyServer.on('proxyReq', (proxyReq, req, res, options) => {
-          req.myRequestParams;
-          res.myResponseParams;
-
-          // @ts-expect-error: should error when request is typed as `any`
-          req.unknownProperty;
-          // @ts-expect-error: should error when response is typed as `any`
-          res.unknownProperty;
-        });
-      });
-
-      expect(myPlugin).toBeDefined();
     });
   });
 });

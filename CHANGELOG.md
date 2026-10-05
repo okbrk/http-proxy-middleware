@@ -1,67 +1,5 @@
 # Changelog
 
-## [v4.2.0](https://github.com/chimurai/http-proxy-middleware/releases/tag/v4.2.0)
-
-- feat(types): export OnProxyEvent type
-- feat(debug-proxy-errors-plugin): diagnostic message for POST + bodyParser + ECONNRESET error
-- chore(package.json): update to httpxy v0.5.4
-
-## [v4.1.1](https://github.com/chimurai/http-proxy-middleware/releases/tag/v4.1.1)
-
-- fix(fixRequestBody): harden form-data stringification
-
-## [v4.1.0](https://github.com/chimurai/http-proxy-middleware/releases/tag/v4.1.0)
-
-- feat(definePlugin): helper function to create plugins
-- chore(package.json): update to httpxy@0.5.3
-- fix(ipv6): preserve credentials when normalizing bracketed IPv6 target string
-- fix(ipv6): unspecified IPv6 target hostname (::)
-- fix(response-interceptor): reduce responseInterceptor buffer churn
-- fix(ws): handle multi-server upgrade subscription and safe proxy shutdown
-- feat(router): add 'res' and 'options' to router function
-- feat(pathRewrite): add 'res' and 'options' to custom pathRewrite function
-- fix(responseInterceptor): prevent trailer/content-length conflict
-- feat(zstd): support zstd compression in responseInterceptor and fixRequestBody
-- fix(responseInterceptor): handle bodyless responses (HEAD/1xx/204/304) with content-encoding
-- fix(router): harden proxy-table matching
-
-## [v4.0.0](https://github.com/chimurai/http-proxy-middleware/releases/tag/v4.0.0)
-
-- fix(types): fix Logger type
-- fix(error-response-plugin): sanitize input
-- feat: drop node v14/v16/v18 [BREAKING CHANGE]
-- refactor: replace http-proxy w/ httpxy
-- chore: remove legacyCreateProxyMiddleware() [BREAKING CHANGE]
-- ci: migrate from jest to vitest
-- chore(package.json): esm only [BREAKING CHANGE]
-- chore(package.json): bump to httpxy 0.5.0 (#1183)
-- chore(package.json): drop node20 [BREAKING CHANGE] (#1179)
-- refactor: remove deprecated url.parse() (#1176)
-- fix(fixRequestBody): support content-encoding on request body (#1142)
-- fix: prevent TypeError when ws enabled but server is undefined (#1163)
-- fix: applyPathRewrite logs old req.url instead of rewritten path (#1157)
-- feat(hono): support for hono with createHonoProxyMiddleware
-- feat(ipv6): support literal IPv6 addresses in `target` and `forward` options (ie. "http://[::1]:8000")
-- chore(package.json): bump httpxy to ^0.5.1
-- fix(logger-plugin): support ipv6 host and handle undefined protocol/host
-- ci(publish.yml): pin github.triggering_actor
-- chore(package.json): node ^22.15.0 (#1218)
-- refactor(package): subpath 'http-proxy-middleware/hono' (#1220)
-- chore: node 26 support
-
-## [v3.0.5](https://github.com/chimurai/http-proxy-middleware/releases/tag/v3.0.5)
-
-- fix(fixRequestBody): check readableLength ([#1096](https://github.com/chimurai/http-proxy-middleware/pull/1096))
-
-## [v3.0.4](https://github.com/chimurai/http-proxy-middleware/releases/tag/v3.0.4)
-
-- fix(fixRequestBody): handle invalid request ([#1092](https://github.com/chimurai/http-proxy-middleware/pull/1092))
-- fix(fixRequestBody): prevent multiple .write() calls ([#1089](https://github.com/chimurai/http-proxy-middleware/pull/1089))
-- fix(websocket): handle errors in handleUpgrade ([#823](https://github.com/chimurai/http-proxy-middleware/pull/823))
-- ci(package): patch http-proxy ([#1084](https://github.com/chimurai/http-proxy-middleware/pull/1084))
-- fix(fixRequestBody): support multipart/form-data ([#896](https://github.com/chimurai/http-proxy-middleware/pull/896))
-- feat(types): export Plugin type ([#1071](https://github.com/chimurai/http-proxy-middleware/pull/1071))
-
 ## [v3.0.3](https://github.com/chimurai/http-proxy-middleware/releases/tag/v3.0.3)
 
 - fix(pathFilter): handle errors
@@ -87,7 +25,7 @@
 This release contains some breaking changes.
 
 Please read the V3 discussion <https://github.com/chimurai/http-proxy-middleware/discussions/768>
-or follow the [MIGRATION_V3.md](https://github.com/chimurai/http-proxy-middleware/blob/master/MIGRATION_V3.md) guide.
+or follow the [MIGRATION.md](https://github.com/chimurai/http-proxy-middleware/blob/master/MIGRATION.md) guide.
 
 - feat(typescript): type improvements ([#882](https://github.com/chimurai/http-proxy-middleware/pull/882))
 - chore(deps): update micromatch to 4.0.5
@@ -180,7 +118,7 @@ or follow the [MIGRATION_V3.md](https://github.com/chimurai/http-proxy-middlewar
 
 - chore(deps): lodash 4.17.20 ([#475](https://github.com/chimurai/http-proxy-middleware/pull/475))
 
-## [v1.0.5](https://github.com/chimurai/http-proxy-middleware/releases/tag/v1.0.5)
+## [v1.0.5](https://github.com/chimurai/http-proxy-middleware/releases/tag/v1.0.6)
 
 - chore(deps): lodash 4.17.19 ([#454](https://github.com/chimurai/http-proxy-middleware/pull/454))
 

@@ -4,7 +4,7 @@
     "dbaeumer.vscode-eslint",
     "eamodio.gitlens",
     "EditorConfig.EditorConfig",
-    "oxc.oxc-vscode",
+    "esbenp.prettier-vscode",
     "streetsidesoftware.code-spell-checker",
     "yzhang.markdown-all-in-one"
   ]

@@ -1,12 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-
-import { verifyConfig } from '../../src/configuration.js';
-import { HttpProxyMiddlewareError } from '../../src/errors.js';
+import { verifyConfig } from '../../src/configuration';
 
 describe('configFactory', () => {
   describe('verifyConfig()', () => {
     describe('missing option.target', () => {
-      let fn: () => void;
+      let fn;
 
       beforeEach(() => {
         fn = () => {
@@ -15,13 +12,12 @@ describe('configFactory', () => {
       });
 
       it('should throw an error when target and router option are missing', () => {
-        expect(fn).toThrow(HttpProxyMiddlewareError);
-        expect(fn).toThrow(expect.objectContaining({ code: 'ERR_CONFIG_FACTORY_TARGET_MISSING' }));
+        expect(fn).toThrowError(Error);
       });
     });
 
     describe('optional option.target when option.router is used', () => {
-      let fn: () => void;
+      let fn;
 
       beforeEach(() => {
         fn = () => {
@@ -33,7 +29,7 @@ describe('configFactory', () => {
       });
 
       it('should not throw an error when target option is missing when router is used', () => {
-        expect(fn).not.toThrow(Error);
+        expect(fn).not.toThrowError(Error);
       });
     });
   });

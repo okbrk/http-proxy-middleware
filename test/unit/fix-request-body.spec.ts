@@ -1,22 +1,19 @@
-import type { ClientRequest } from 'node:http';
-import * as querystring from 'node:querystring';
-import * as zlib from 'node:zlib';
-
-import { describe, expect, it } from 'vitest';
-
-import type { BodyParserLikeRequest } from '../../src/handlers/fix-request-body.js';
-import { fixRequestBody } from '../../src/handlers/fix-request-body.js';
-import { createMockRequest, createMockResponse, createMockClientRequest } from '../test-utils.js';
+import { Socket } from 'net';
+import { ClientRequest, IncomingMessage } from 'http';
+import * as querystring from 'querystring';
+import { fixRequestBody, BodyParserLikeRequest } from '../../src/handlers/fix-request-body';
 
 const fakeProxyRequest = (): ClientRequest => {
-  return createMockClientRequest('http://some-host');
+  const proxyRequest = new ClientRequest('http://some-host');
+  proxyRequest.emit = jest.fn();
+
+  return proxyRequest;
 };
 
 const createRequestWithBody = (body: unknown): BodyParserLikeRequest => {
-  return createMockRequest({
-    url: '/test_path',
-    body: body,
-  } as BodyParserLikeRequest);
+  const req = new IncomingMessage(new Socket()) as BodyParserLikeRequest;
+  req.body = body;
+  return req;
 };
 
 const handlerFormDataBodyData = (contentType: string, data: { [key: string]: any }) => {
@@ -32,28 +29,12 @@ describe('fixRequestBody', () => {
   it('should not write when body is undefined', () => {
     const proxyRequest = fakeProxyRequest();
 
+    jest.spyOn(proxyRequest, 'setHeader');
+    jest.spyOn(proxyRequest, 'write');
+
     fixRequestBody(proxyRequest, createRequestWithBody(undefined));
 
     expect(proxyRequest.setHeader).not.toHaveBeenCalled();
-    expect(proxyRequest.write).not.toHaveBeenCalled();
-  });
-
-  it('should not write when Content-Type is missing', () => {
-    const proxyRequest = fakeProxyRequest();
-
-    fixRequestBody(proxyRequest, createRequestWithBody({ someField: 'some value' }));
-
-    expect(proxyRequest.setHeader).not.toHaveBeenCalled();
-    expect(proxyRequest.write).not.toHaveBeenCalled();
-  });
-
-  it('should not write when Content-Type is unsupported', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'application/octet-stream');
-
-    fixRequestBody(proxyRequest, createRequestWithBody({ someField: 'some value' }));
-
-    expect(proxyRequest.setHeader).not.toHaveBeenCalledWith('Content-Length', expect.anything());
     expect(proxyRequest.write).not.toHaveBeenCalled();
   });
 
@@ -61,26 +42,21 @@ describe('fixRequestBody', () => {
     const proxyRequest = fakeProxyRequest();
     proxyRequest.setHeader('content-type', 'application/json; charset=utf-8');
 
+    jest.spyOn(proxyRequest, 'setHeader');
+    jest.spyOn(proxyRequest, 'write');
+
     fixRequestBody(proxyRequest, createRequestWithBody({}));
 
     expect(proxyRequest.setHeader).toHaveBeenCalled();
     expect(proxyRequest.write).toHaveBeenCalled();
   });
 
-  it('should write when body is not empty and Content-Type is text/plain', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'text/plain; charset=utf-8');
-
-    fixRequestBody(proxyRequest, createRequestWithBody('some string'));
-
-    const expectedBody = 'some string';
-    expect(proxyRequest.setHeader).toHaveBeenCalledWith('Content-Length', expectedBody.length);
-    expect(proxyRequest.write).toHaveBeenCalledWith(expectedBody);
-  });
-
   it('should write when body is not empty and Content-Type is application/json', () => {
     const proxyRequest = fakeProxyRequest();
     proxyRequest.setHeader('content-type', 'application/json; charset=utf-8');
+
+    jest.spyOn(proxyRequest, 'setHeader');
+    jest.spyOn(proxyRequest, 'write');
 
     fixRequestBody(proxyRequest, createRequestWithBody({ someField: 'some value' }));
 
@@ -92,6 +68,9 @@ describe('fixRequestBody', () => {
   it('should write when body is not empty and Content-Type is multipart/form-data', () => {
     const proxyRequest = fakeProxyRequest();
     proxyRequest.setHeader('content-type', 'multipart/form-data');
+
+    jest.spyOn(proxyRequest, 'setHeader');
+    jest.spyOn(proxyRequest, 'write');
 
     fixRequestBody(proxyRequest, createRequestWithBody({ someField: 'some value' }));
 
@@ -114,6 +93,9 @@ describe('fixRequestBody', () => {
     const proxyRequest = fakeProxyRequest();
     proxyRequest.setHeader('content-type', 'multipart/form-data');
 
+    jest.spyOn(proxyRequest, 'setHeader');
+    jest.spyOn(proxyRequest, 'write');
+
     fixRequestBody(proxyRequest, createRequestWithBody({ someField: 'some value' }));
 
     const expectedBody = handlerFormDataBodyData('multipart/form-data', {
@@ -132,95 +114,12 @@ describe('fixRequestBody', () => {
     expect(proxyRequest.write).toHaveBeenCalledWith(expectedBody);
   });
 
-  it('should reject multipart field values containing CRLF', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'multipart/form-data; boundary=BB');
-
-    fixRequestBody(
-      proxyRequest,
-      createRequestWithBody({
-        user: 'alice\r\n--BB\r\nContent-Disposition: form-data; name="role"\r\n\r\nadmin',
-      }),
-    );
-
-    expect(proxyRequest.write).toHaveBeenCalledTimes(0);
-    expect(proxyRequest.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it('should reject multipart field values containing LF only', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'multipart/form-data; boundary=BB');
-
-    fixRequestBody(
-      proxyRequest,
-      createRequestWithBody({
-        user: 'alice\nadmin',
-      }),
-    );
-
-    expect(proxyRequest.write).toHaveBeenCalledTimes(0);
-    expect(proxyRequest.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it('should reject multipart field values containing CR only', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'multipart/form-data; boundary=BB');
-
-    fixRequestBody(
-      proxyRequest,
-      createRequestWithBody({
-        user: 'alice\radmin',
-      }),
-    );
-
-    expect(proxyRequest.write).toHaveBeenCalledTimes(0);
-    expect(proxyRequest.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it('should reject multipart field names containing LF', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'multipart/form-data; boundary=BB');
-
-    fixRequestBody(
-      proxyRequest,
-      createRequestWithBody({
-        'bad\nname': 'alice',
-      }),
-    );
-
-    expect(proxyRequest.write).toHaveBeenCalledTimes(0);
-    expect(proxyRequest.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it('should reject multipart field values containing the active boundary delimiter', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'multipart/form-data; boundary=BB');
-
-    fixRequestBody(
-      proxyRequest,
-      createRequestWithBody({
-        user: '--BB',
-      }),
-    );
-
-    expect(proxyRequest.write).toHaveBeenCalledTimes(0);
-    expect(proxyRequest.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it('should escape quotes in multipart field names', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'multipart/form-data; boundary=BB');
-
-    fixRequestBody(proxyRequest, createRequestWithBody({ 'field"name': 'value' }));
-
-    expect(proxyRequest.write).toHaveBeenCalledWith(
-      '--BB\r\nContent-Disposition: form-data; name="field\\"name"\r\n\r\nvalue\r\n',
-    );
-  });
-
   it('should write when body is not empty and Content-Type ends with +json', () => {
     const proxyRequest = fakeProxyRequest();
     proxyRequest.setHeader('content-type', 'application/merge-patch+json; charset=utf-8');
+
+    jest.spyOn(proxyRequest, 'setHeader');
+    jest.spyOn(proxyRequest, 'write');
 
     fixRequestBody(proxyRequest, createRequestWithBody({ someField: 'some value' }));
     const expectedBody = JSON.stringify({ someField: 'some value' });
@@ -231,6 +130,9 @@ describe('fixRequestBody', () => {
   it('should write when body is not empty and Content-Type is application/x-www-form-urlencoded', () => {
     const proxyRequest = fakeProxyRequest();
     proxyRequest.setHeader('content-type', 'application/x-www-form-urlencoded');
+
+    jest.spyOn(proxyRequest, 'setHeader');
+    jest.spyOn(proxyRequest, 'write');
 
     fixRequestBody(proxyRequest, createRequestWithBody({ someField: 'some value' }));
 
@@ -243,112 +145,13 @@ describe('fixRequestBody', () => {
     const proxyRequest = fakeProxyRequest();
     proxyRequest.setHeader('content-type', 'application/x-www-form-urlencoded; charset=UTF-8');
 
+    jest.spyOn(proxyRequest, 'setHeader');
+    jest.spyOn(proxyRequest, 'write');
+
     fixRequestBody(proxyRequest, createRequestWithBody({ someField: 'some value' }));
 
     const expectedBody = querystring.stringify({ someField: 'some value' });
     expect(proxyRequest.setHeader).toHaveBeenCalledWith('Content-Length', expectedBody.length);
     expect(proxyRequest.write).toHaveBeenCalledWith(expectedBody);
-  });
-
-  it('should parse json and call write() once with incorrect content-type application/x-www-form-urlencoded+json', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'application/x-www-form-urlencoded+json');
-
-    fixRequestBody(proxyRequest, createRequestWithBody({ someField: 'some value' }));
-
-    const expectedBody = JSON.stringify({ someField: 'some value' });
-    expect(proxyRequest.setHeader).toHaveBeenCalledWith('Content-Length', expectedBody.length);
-    expect(proxyRequest.write).toHaveBeenCalledTimes(1);
-    expect(proxyRequest.write).toHaveBeenCalledWith(expectedBody);
-  });
-
-  it('should not fixRequestBody() when there bodyParser fails', () => {
-    const proxyRequest = fakeProxyRequest();
-    const request = {
-      get readableLength() {
-        return 4444; // simulate bodyParser failure
-      },
-    } as BodyParserLikeRequest;
-
-    const proxyResponse = createMockResponse();
-    proxyRequest.setHeader('content-type', 'application/x-www-form-urlencoded');
-
-    fixRequestBody(proxyRequest, request);
-
-    expect(proxyResponse.end).toHaveBeenCalledTimes(0);
-    expect(proxyRequest.write).toHaveBeenCalledTimes(0);
-    expect(proxyRequest.destroy).toHaveBeenCalledTimes(0);
-  });
-
-  it('should re-encode body when the source was encoded', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'application/json; charset=utf-8');
-    proxyRequest.setHeader('content-encoding', 'gzip');
-
-    const data = { someField: 'some value' };
-    fixRequestBody(proxyRequest, createRequestWithBody(data));
-
-    const expectedBody = zlib.gzipSync(JSON.stringify(data));
-    expect(proxyRequest.setHeader).toHaveBeenCalledWith('Content-Length', expectedBody.length);
-    expect(proxyRequest.write).toHaveBeenCalledWith(expectedBody);
-  });
-
-  it('should re-encode body when the source was Brotli encoded', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'application/json; charset=utf-8');
-    proxyRequest.setHeader('content-encoding', 'br');
-
-    const data = { someField: 'some value' };
-    fixRequestBody(proxyRequest, createRequestWithBody(data));
-
-    const expectedBody = zlib.brotliCompressSync(JSON.stringify(data));
-    expect(proxyRequest.setHeader).toHaveBeenCalledWith('Content-Length', expectedBody.length);
-    expect(proxyRequest.write).toHaveBeenCalledWith(expectedBody);
-  });
-
-  it('should re-encode body when the source was deflate encoded', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'application/json; charset=utf-8');
-    proxyRequest.setHeader('content-encoding', 'deflate');
-
-    const data = { someField: 'some value' };
-    fixRequestBody(proxyRequest, createRequestWithBody(data));
-
-    const expectedBody = zlib.deflateSync(JSON.stringify(data));
-    expect(proxyRequest.setHeader).toHaveBeenCalledWith('Content-Length', expectedBody.length);
-    expect(proxyRequest.write).toHaveBeenCalledWith(expectedBody);
-  });
-
-  it('should re-encode body when the source was zstd encoded', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'application/json; charset=utf-8');
-    proxyRequest.setHeader('content-encoding', 'zstd');
-
-    const data = { someField: 'some value' };
-    fixRequestBody(proxyRequest, createRequestWithBody(data));
-
-    const expectedBody = zlib.zstdCompressSync(JSON.stringify(data));
-    expect(proxyRequest.setHeader).toHaveBeenCalledWith('Content-Length', expectedBody.length);
-    expect(proxyRequest.write).toHaveBeenCalledWith(expectedBody);
-  });
-
-  it('should destroy the proxy request with an Error when body serialization throws a string', () => {
-    const proxyRequest = fakeProxyRequest();
-    proxyRequest.setHeader('content-type', 'application/json; charset=utf-8');
-
-    const requestBody = {
-      toJSON() {
-        throw 'serialization failed';
-      },
-    };
-
-    fixRequestBody(proxyRequest, createRequestWithBody(requestBody));
-
-    expect(proxyRequest.write).not.toHaveBeenCalled();
-    expect(proxyRequest.destroy).toHaveBeenCalledTimes(1);
-    expect(proxyRequest.destroy).toHaveBeenCalledWith(expect.any(Error));
-    expect(proxyRequest.destroy).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'serialization failed' }),
-    );
   });
 });

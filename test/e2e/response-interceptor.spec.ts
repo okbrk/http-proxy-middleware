@@ -1,40 +1,16 @@
-import zlib from 'node:zlib';
-
-import type { Mockttp } from 'mockttp';
-import { getLocal } from 'mockttp';
-import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
-import { createProxyMiddleware, responseInterceptor } from '../../src/index.js';
-import { createApp } from './test-kit.js';
+import { createProxyMiddleware, responseInterceptor } from '../../src';
+import { createApp } from './test-kit';
+import * as request from 'supertest';
 
 describe('responseInterceptor()', () => {
   let agent: request.Agent;
-  let targetServer: Mockttp;
-
-  beforeEach(async () => {
-    targetServer = getLocal();
-    await targetServer.start();
-  });
-
-  afterEach(async () => {
-    await targetServer.stop();
-  });
 
   describe('intercept responses', () => {
-    beforeEach(async () => {
-      await targetServer.forGet('/json').thenReply(200, JSON.stringify({ source: 'json' }), {
-        'content-type': 'application/json; charset=utf-8',
-      });
-
-      await targetServer.forGet('/image').thenReply(200, 'PNG', {
-        'content-type': 'image/png',
-      });
-
+    beforeEach(() => {
       agent = request(
         createApp(
           createProxyMiddleware({
-            target: targetServer.url,
+            target: `http://httpbin.org`,
             changeOrigin: true, // for vhosted sites, changes host header to match to target's host
             selfHandleResponse: true,
             on: {
@@ -48,12 +24,12 @@ describe('responseInterceptor()', () => {
       );
     });
 
-    it('should return totally different response from target /json', async () => {
+    it('should return totally different response from http://httpbin.org/json', async () => {
       const response = await agent.get(`/json`).expect(200);
       expect(response.body.foo).toEqual('bar');
     });
 
-    it('should return totally different response from target /image', async () => {
+    it('should return totally different response from http://httpbin.org/image', async () => {
       const response = await agent
         .get(`/image`)
         .expect('Content-Type', 'application/json; charset=utf-8')
@@ -61,24 +37,18 @@ describe('responseInterceptor()', () => {
       expect(response.body.foo).toEqual('bar');
     });
 
-    it('should support double bytes characters for /json', async () => {
+    it('should support double bytes characters http://httpbin.org/json', async () => {
       const response = await agent.get(`/json`).expect(200);
       expect(response.body.favorite).toEqual('叉燒包');
     });
   });
 
   describe('intercept responses with original headers', () => {
-    beforeEach(async () => {
-      await targetServer.forGet('/cookies/set/cookie/monster').thenReply(302, '', {
-        'access-control-allow-origin': '*',
-        date: new Date().toUTCString(),
-        'set-cookie': 'cookie=monster; Path=/',
-      });
-
+    beforeEach(() => {
       agent = request(
         createApp(
           createProxyMiddleware({
-            target: targetServer.url,
+            target: `http://httpbin.org`,
             changeOrigin: true, // for vhosted sites, changes host header to match to target's host
             selfHandleResponse: true,
             on: {
@@ -91,7 +61,7 @@ describe('responseInterceptor()', () => {
       );
     });
 
-    it('should proxy and return original headers from /cookies/set/cookie/monster', async () => {
+    it('should proxy and return original headers from http://httpbin.org/cookies/set/cookie/monster', async () => {
       return agent
         .get(`/cookies/set/cookie/monster`)
         .expect('Access-Control-Allow-Origin', '*')
@@ -102,47 +72,11 @@ describe('responseInterceptor()', () => {
   });
 
   describe('intercept compressed responses', () => {
-    beforeEach(async () => {
-      await targetServer
-        .forGet('/brotli')
-        .thenReply(
-          200,
-          zlib.brotliCompressSync(Buffer.from(JSON.stringify({ brotli: true }), 'utf8')),
-          {
-            'content-encoding': 'br',
-            'content-type': 'application/json; charset=utf-8',
-          },
-        );
-
-      await targetServer
-        .forGet('/gzip')
-        .thenReply(200, zlib.gzipSync(Buffer.from(JSON.stringify({ gzipped: true }), 'utf8')), {
-          'content-encoding': 'gzip',
-          'content-type': 'application/json; charset=utf-8',
-        });
-
-      await targetServer
-        .forGet('/deflate')
-        .thenReply(200, zlib.deflateSync(Buffer.from(JSON.stringify({ deflated: true }), 'utf8')), {
-          'content-encoding': 'deflate',
-          'content-type': 'application/json; charset=utf-8',
-        });
-
-      await targetServer
-        .forGet('/zstd')
-        .thenReply(
-          200,
-          zlib.zstdCompressSync(Buffer.from(JSON.stringify({ zstd: true }), 'utf8')),
-          {
-            'content-encoding': 'zstd',
-            'content-type': 'application/json; charset=utf-8',
-          },
-        );
-
+    beforeEach(() => {
       agent = request(
         createApp(
           createProxyMiddleware({
-            target: targetServer.url,
+            target: `http://httpbin.org`,
             changeOrigin: true, // for vhosted sites, changes host header to match to target's host
             selfHandleResponse: true,
             on: {
@@ -153,112 +87,19 @@ describe('responseInterceptor()', () => {
       );
     });
 
-    it('should return decompressed brotli response /brotli', async () => {
+    it('should return decompressed brotli response http://httpbin.org/brotli', async () => {
       const response = await agent.get(`/brotli`).expect(200);
       expect(response.body.brotli).toBe(true);
     });
 
-    it('should return decompressed gzipped response from /gzip', async () => {
+    it('should return decompressed gzipped response from http://httpbin.org/gzip', async () => {
       const response = await agent.get(`/gzip`).expect(200);
       expect(response.body.gzipped).toBe(true);
     });
 
-    it('should return decompressed deflated response from /deflate', async () => {
+    it('should return decompressed deflated response from http://httpbin.org/deflate', async () => {
       const response = await agent.get(`/deflate`).expect(200);
       expect(response.body.deflated).toBe(true);
-    });
-
-    it('should return decompressed zstd response from /zstd', async () => {
-      const response = await agent.get(`/zstd`).expect(200);
-      expect(response.body.zstd).toBe(true);
-    });
-  });
-
-  describe('trailer response header handling', () => {
-    beforeEach(async () => {
-      await targetServer
-        .forGet('/response-headers')
-        .withExactQuery('?Trailer=X-Stream-Error&Host=localhost')
-        .thenReply(200, '', {
-          'transfer-encoding': 'chunked',
-          trailer: 'X-Stream-Error',
-          host: 'localhost',
-          'set-cookie': 'cookie=monster; Path=/',
-          'content-type': 'application/json; charset=utf-8',
-          'cache-control': 'private, max-age=60',
-        });
-
-      agent = request(
-        createApp(
-          createProxyMiddleware({
-            target: targetServer.url,
-            changeOrigin: true,
-            selfHandleResponse: true,
-            on: {
-              proxyRes: responseInterceptor(async () => {
-                return JSON.stringify({ ok: true, note: 'rewritten' });
-              }),
-            },
-          }),
-        ),
-      );
-    });
-
-    it('should rewrite body without trailer/content-length conflict and preserve end-to-end headers', async () => {
-      const response = await agent
-        .get('/response-headers?Trailer=X-Stream-Error&Host=localhost')
-        .expect(200);
-
-      expect(response.body).toEqual({ ok: true, note: 'rewritten' });
-      expect(response.header['trailer']).toBeUndefined();
-      expect(response.header['transfer-encoding']).toBeUndefined();
-      expect(response.header['content-length']).toBeDefined();
-      expect(response.header['content-type']).toContain('application/json');
-      expect(response.header['set-cookie']).toBeDefined();
-      expect(response.header['cache-control']).toBe('private, max-age=60');
-    });
-  });
-
-  describe('bodyless responses with content-encoding', () => {
-    beforeEach(async () => {
-      await targetServer.forGet('/no-content').thenReply(204, '', {
-        'content-encoding': 'gzip',
-        'cache-control': 'no-cache',
-      });
-
-      await targetServer.forGet('/not-modified').thenReply(304, '', {
-        'content-encoding': 'deflate',
-        etag: '"123"',
-      });
-
-      agent = request(
-        createApp(
-          createProxyMiddleware({
-            target: targetServer.url,
-            changeOrigin: true,
-            selfHandleResponse: true,
-            on: {
-              proxyRes: responseInterceptor(async (buffer) => buffer),
-            },
-          }),
-        ),
-      );
-    });
-
-    it('should preserve 204 and not fail on empty gzip body', async () => {
-      const response = await agent.get('/no-content').expect(204);
-
-      expect(response.text).toBe('');
-      expect(response.header['content-encoding']).toBeUndefined();
-      expect(response.header['cache-control']).toBe('no-cache');
-    });
-
-    it('should preserve 304 and not fail on empty deflate body', async () => {
-      const response = await agent.get('/not-modified').expect(304);
-
-      expect(response.text).toBe('');
-      expect(response.header['content-encoding']).toBeUndefined();
-      expect(response.header.etag).toBe('"123"');
     });
   });
 });

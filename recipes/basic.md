@@ -3,7 +3,7 @@
 This example will create a basic proxy middleware.
 
 ```javascript
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const apiProxy = createProxyMiddleware({
   target: 'http://localhost:3000',

@@ -1,12 +1,11 @@
-import { Debug } from '../../debug.js';
-import type { Plugin } from '../../types.js';
-import { getFunctionName } from '../../utils/function.js';
-import { definePlugin } from '../define-plugin.js';
+import { Debug } from '../../debug';
+import { Plugin } from '../../types';
+import { getFunctionName } from '../../utils/function';
 
 const debug = Debug.extend('proxy-events-plugin');
 
 /**
- * Implements option.on object to subscribe to `httpxy` events.
+ * Implements option.on object to subscribe to http-proxy events.
  *
  * @example
  * ```js
@@ -25,22 +24,9 @@ const debug = Debug.extend('proxy-events-plugin');
  * });
  * ```
  */
-export const proxyEventsPlugin: Plugin = definePlugin((proxyServer, options) => {
-  if (!options.on) {
-    return;
-  }
-
-  // hoist variable here for better typing
-  let eventName: keyof typeof options.on;
-  // for in provide better typing than Object.entries()
-  for (eventName in options.on) {
-    if (Object.prototype.hasOwnProperty.call(options.on, eventName)) {
-      const handler = options.on[eventName];
-      if (!handler) {
-        continue;
-      }
-      debug(`register event handler: "${eventName}" -> "${getFunctionName(handler)}"`);
-      proxyServer.on<keyof typeof options.on>(eventName, handler as (...args: unknown[]) => void);
-    }
-  }
-});
+export const proxyEventsPlugin: Plugin = (proxyServer, options) => {
+  Object.entries(options.on || {}).forEach(([eventName, handler]) => {
+    debug(`register event handler: "${eventName}" -> "${getFunctionName(handler)}"`);
+    proxyServer.on(eventName, handler as (...args: unknown[]) => void);
+  });
+};

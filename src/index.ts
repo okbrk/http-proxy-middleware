@@ -1,7 +1,15 @@
-export * from './factory.js';
+export * from './factory';
 
-export * from './handlers/index.js';
+export * from './handlers';
 
-export type { Plugin, Filter, Options, RequestHandler, OnProxyEvent } from './types.js';
+export type { Plugin, Filter, Options, RequestHandler } from './types';
 
-export * from './plugins/index.js';
+/**
+ * Default plugins
+ */
+export * from './plugins/default';
+
+/**
+ * Legacy exports
+ */
+export * from './legacy';

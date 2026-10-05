@@ -1,15 +1,14 @@
 {
   "language": "en",
+  "spellCheckDelayMs": 500,
   "dictionaries": ["node", "npm", "typescript", "contributors"],
   "ignorePaths": [
     "node_modules/**",
     "coverage/**",
     "dist/**",
-    "patches/**",
     "tsconfig.tsbuildinfo",
     "package.json",
     "yarn.lock",
-    "devcontainer.json",
     ".gitpod.yml",
     "*.tgz"
   ],
@@ -19,22 +18,20 @@
       "path": "CONTRIBUTORS.txt"
     }
   ],
-  "ignoreRegExpList": ["[a-z]+path", "\\]\\(#[a-z-]+\\)", "%[\\dA-Z]{2}"],
+  "ignoreRegExpList": ["[a-z]+path", "\\]\\(#[a-z-]+\\)"],
   "words": [
-    "bodyless",
     "brotli",
     "camelcase",
     "codesandbox",
+    "deepcode",
     "depthfrom",
     "fastify",
     "globbing",
     "gzipped",
-    "httpxy",
     "jsonplaceholder",
     "lcov",
     "Lenna",
     "lipsum",
-    "logomark",
     "lorum",
     "middlewares",
     "millis",
@@ -42,22 +39,17 @@
     "nextjs",
     "Nodejitsu",
     "ntlm",
-    "oxfmt",
     "pino",
     "proxied",
     "proxying",
     "rawbody",
     "restream",
-    "selfsigned",
     "snyk",
     "streamify",
-    "superstring",
     "tseslint",
     "typicode",
-    "unstub",
     "vhosted",
     "websockets",
-    "xfwd",
-    "zstd"
+    "xfwd"
   ]
 }

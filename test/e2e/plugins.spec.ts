@@ -1,11 +1,7 @@
-import type { Mockttp } from 'mockttp';
-import { getLocal } from 'mockttp';
-import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
-import { definePlugin } from '../../src/index.js';
-import type { Options, Plugin } from '../../src/index.js';
-import { createApp, createProxyMiddleware } from './test-kit.js';
+import { createProxyMiddleware, createApp } from './test-kit';
+import * as request from 'supertest';
+import { getLocal, Mockttp } from 'mockttp';
+import type { Options, Plugin } from '../../src/types';
 
 describe('E2E Plugins', () => {
   let mockTargetServer: Mockttp;
@@ -19,19 +15,19 @@ describe('E2E Plugins', () => {
     await mockTargetServer.stop();
   });
 
-  it('should register a plugin and access the `httpxy` object', async () => {
+  it('should register a plugin and access the http-proxy object', async () => {
     let proxyReqUrl: string | undefined;
     let responseStatusCode: number | undefined;
 
     mockTargetServer.forGet('/users/1').thenReply(200, '{"userName":"John"}');
 
-    const simplePlugin: Plugin = definePlugin((proxy) => {
+    const simplePlugin: Plugin = (proxy) => {
       proxy.on('proxyReq', (proxyReq, req, res, options) => (proxyReqUrl = req.url));
       proxy.on('proxyRes', (proxyRes, req, res) => (responseStatusCode = proxyRes.statusCode));
-    });
+    };
 
     const config: Options = {
-      target: mockTargetServer.url,
+      target: `http://localhost:${mockTargetServer.port}`,
       plugins: [simplePlugin], // register a plugin
     };
     const proxyMiddleware = createProxyMiddleware(config);

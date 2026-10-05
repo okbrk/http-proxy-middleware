@@ -2,12 +2,12 @@
 
 Intercept responses from upstream with `responseInterceptor`. (Make sure to set `selfHandleResponse: true`)
 
-Responses which are compressed with `brotli`, `gzip`, `deflate` and `zstd` will be decompressed automatically (zstd requires Node.js >= 22.15.0). Response will be made available as [`buffer`](https://nodejs.org/api/buffer.html) which you can manipulate.
+Responses which are compressed with `brotli`, `gzip` and `deflate` will be decompressed automatically. Response will be made available as [`buffer`](https://nodejs.org/api/buffer.html) which you can manipulate.
 
 ## Replace text and change http status code
 
 ```js
-import { createProxyMiddleware, responseInterceptor } from 'http-proxy-middleware';
+const { createProxyMiddleware, responseInterceptor } = require('http-proxy-middleware');
 
 const proxy = createProxyMiddleware({
   target: 'http://www.example.com',
@@ -105,9 +105,7 @@ Some working examples on <https://03rjl.sse.codesandbox.io>/[relative wikimedia 
 _You can just use any relative image path from <https://upload.wikimedia.org> and use the relative image path on <https://03rjl.sse.codesandbox.io> to see the manipulated image._
 
 ```javascript
-// use jimp library for image manipulation
-import { createProxyMiddleware, responseInterceptor } from 'http-proxy-middleware';
-import Jimp from 'jimp';
+const Jimp = require('jimp'); // use jimp library for image manipulation
 
 const proxy = createProxyMiddleware({
   target: 'https://upload.wikimedia.org',
@@ -142,7 +140,7 @@ const proxy = createProxyMiddleware({
 ## Manipulate response headers
 
 ```js
-import { createProxyMiddleware, responseInterceptor } from 'http-proxy-middleware';
+const { createProxyMiddleware, responseInterceptor } = require('http-proxy-middleware');
 
 const proxy = createProxyMiddleware({
   target: 'http://www.example.com',

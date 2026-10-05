@@ -1,5 +1,4 @@
 import type { NextApiRequest, NextApiResponse, PageConfig } from 'next';
-
 import { proxyMiddleware } from './_proxy';
 
 // https://nextjs.org/docs/pages/building-your-application/routing/api-routes

@@ -1,97 +1,54 @@
-import type * as http from 'node:http';
-import * as zlib from 'node:zlib';
-
-import { Debug } from '../debug.js';
-import { getFunctionName } from '../utils/function.js';
+import type * as http from 'http';
+import * as zlib from 'zlib';
+import { Debug } from '../debug';
+import { getFunctionName } from '../utils/function';
 
 const debug = Debug.extend('response-interceptor');
 
 type Interceptor<TReq = http.IncomingMessage, TRes = http.ServerResponse> = (
   buffer: Buffer,
-  proxyRes: http.IncomingMessage,
+  proxyRes: TReq,
   req: TReq,
   res: TRes,
 ) => Promise<Buffer | string>;
 
 /**
  * Intercept responses from upstream.
- * Automatically decompress (deflate, gzip, brotli, zstd).
+ * Automatically decompress (deflate, gzip, brotli).
  * Give developer the opportunity to modify intercepted Buffer and http.ServerResponse
  *
  * NOTE: must set options.selfHandleResponse=true (prevent automatic call of res.end())
- *
- * @example
- *
- * ```ts
- * createProxyMiddleware({
- *   target: 'http://example.com',
- *   selfHandleResponse: true, // MUST set selfHandleResponse=true
- *   on: {
- *     proxyRes: responseInterceptor(async (buffer, proxyRes, req, res) => {
- *       // modify intercepted buffer and return modified buffer
- *       const modifiedBuffer = Buffer.from(buffer.toString().replace(/Example/g, 'Demo'), 'utf8');
- *       return modifiedBuffer;
- *     }),
- *   }
- * });
- * ```
  */
 export function responseInterceptor<
   TReq extends http.IncomingMessage = http.IncomingMessage,
   TRes extends http.ServerResponse = http.ServerResponse,
 >(interceptor: Interceptor<TReq, TRes>) {
   return async function proxyResResponseInterceptor(
-    proxyRes: http.IncomingMessage,
+    proxyRes: TReq,
     req: TReq,
     res: TRes,
   ): Promise<void> {
     debug('intercept proxy response');
     const originalProxyRes = proxyRes;
-    const chunks: Buffer[] = [];
-    let bufferLength = 0;
-
-    // Bodyless responses (HEAD, 1xx, 204, 304) must not be decompressed.
-    const contentEncoding = isBodylessResponse(proxyRes.statusCode, req.method)
-      ? undefined
-      : proxyRes.headers['content-encoding'];
+    let buffer = Buffer.from('', 'utf8');
 
     // decompress proxy response
-    const _proxyRes = decompress(proxyRes, contentEncoding);
+    const _proxyRes = decompress<TReq>(proxyRes, proxyRes.headers['content-encoding']);
 
-    // collect data chunks and concatenate once on end to avoid repeated full-buffer copies
-    _proxyRes.on('data', (chunk) => {
-      const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      chunks.push(chunkBuffer);
-      bufferLength += chunkBuffer.length; // precalculate Buffer length for slightly better performance on Buffer.concat()
-    });
+    // concat data stream
+    _proxyRes.on('data', (chunk) => (buffer = Buffer.concat([buffer, chunk])));
 
     _proxyRes.on('end', async () => {
-      const buffer = Buffer.concat(chunks, bufferLength);
-      chunks.length = 0; // clear chunks array
-      bufferLength = 0;
-
       // copy original headers
       copyHeaders(proxyRes, res);
-
-      // RFC 9110: HEAD and 1xx/204/304 responses do not include content.
-      // End the response after headers to avoid writing an invalid body.
-      if (isBodylessResponse(proxyRes.statusCode, req.method)) {
-        res.end();
-        return;
-      }
 
       // call interceptor with intercepted response (buffer)
       debug('call interceptor function: %s', getFunctionName(interceptor));
       const interceptedBuffer = Buffer.from(await interceptor(buffer, originalProxyRes, req, res));
 
       // set correct content-length (with double byte character support)
-      debug('set content-length: %s', Buffer.byteLength(interceptedBuffer));
-
-      // Buffered responses cannot preserve trailer framing.
-      // Remove trailer declaration (and transfer-encoding just in case) before setting content-length.
-      res.removeHeader('trailer');
-      res.removeHeader('transfer-encoding');
-      res.setHeader('content-length', Buffer.byteLength(interceptedBuffer));
+      debug('set content-length: %s', Buffer.byteLength(interceptedBuffer, 'utf8'));
+      res.setHeader('content-length', Buffer.byteLength(interceptedBuffer, 'utf8'));
 
       debug('write intercepted response');
       res.write(interceptedBuffer);
@@ -99,19 +56,9 @@ export function responseInterceptor<
     });
 
     _proxyRes.on('error', (error) => {
-      chunks.length = 0; // clear chunks array
-      bufferLength = 0;
       res.end(`Error fetching proxied request: ${error.message}`);
     });
   };
-}
-
-function isBodylessResponse(statusCode?: number, method?: string): boolean {
-  return (
-    method?.toUpperCase() === 'HEAD' ||
-    (statusCode !== undefined &&
-      ((statusCode >= 100 && statusCode < 200) || statusCode === 204 || statusCode === 304))
-  );
 }
 
 /**
@@ -121,9 +68,8 @@ function isBodylessResponse(statusCode?: number, method?: string): boolean {
 function decompress<TReq extends http.IncomingMessage = http.IncomingMessage>(
   proxyRes: TReq,
   contentEncoding?: string,
-): TReq | zlib.Gunzip | zlib.Inflate | zlib.BrotliDecompress | zlib.ZstdDecompress {
-  let _proxyRes: TReq | zlib.Gunzip | zlib.Inflate | zlib.BrotliDecompress | zlib.ZstdDecompress =
-    proxyRes;
+): TReq | zlib.Gunzip | zlib.Inflate | zlib.BrotliDecompress {
+  let _proxyRes: TReq | zlib.Gunzip | zlib.Inflate | zlib.BrotliDecompress = proxyRes;
   let decompress;
 
   switch (contentEncoding) {
@@ -135,9 +81,6 @@ function decompress<TReq extends http.IncomingMessage = http.IncomingMessage>(
       break;
     case 'deflate':
       decompress = zlib.createInflate();
-      break;
-    case 'zstd':
-      decompress = zlib.createZstdDecompress();
       break;
     default:
       break;
@@ -156,41 +99,30 @@ function decompress<TReq extends http.IncomingMessage = http.IncomingMessage>(
  * Copy original headers
  * https://github.com/apache/superset/blob/9773aba522e957ed9423045ca153219638a85d2f/superset-frontend/webpack.proxy-config.js#L78
  */
-function copyHeaders<TRes extends http.ServerResponse = http.ServerResponse>(
-  originalResponse: http.IncomingMessage,
-  response: TRes,
-): void {
+function copyHeaders(originalResponse, response): void {
   debug('copy original response headers');
 
-  if (originalResponse.statusCode) {
-    response.statusCode = originalResponse.statusCode;
-  }
-  if (originalResponse.statusMessage) {
-    response.statusMessage = originalResponse.statusMessage;
-  }
+  response.statusCode = originalResponse.statusCode;
+  response.statusMessage = originalResponse.statusMessage;
 
   if (response.setHeader) {
     let keys = Object.keys(originalResponse.headers);
 
-    // ignore encoding/framing headers that are incompatible with buffered interception
-    keys = keys.filter(
-      (key) => !['content-encoding', 'transfer-encoding', 'trailer'].includes(key),
-    );
+    // ignore chunked, brotli, gzip, deflate headers
+    keys = keys.filter((key) => !['content-encoding', 'transfer-encoding'].includes(key));
 
     keys.forEach((key) => {
       let value = originalResponse.headers[key];
 
-      if (key === 'set-cookie' && value) {
+      if (key === 'set-cookie') {
         // remove cookie domain
         value = Array.isArray(value) ? value : [value];
         value = value.map((x) => x.replace(/Domain=[^;]+?/i, ''));
       }
 
-      response.setHeader(key, value as number | string | string[]);
+      response.setHeader(key, value);
     });
   } else {
-    if ('headers' in response) {
-      response.headers = originalResponse.headers;
-    }
+    response.headers = originalResponse.headers;
   }
 }

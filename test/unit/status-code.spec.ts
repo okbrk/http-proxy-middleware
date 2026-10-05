@@ -1,6 +1,4 @@
-import { describe, expect, it } from 'vitest';
-
-import { getStatusCode } from '../../src/status-code.js';
+import { getStatusCode } from '../../src/status-code';
 
 describe('getStatusCode', () => {
   const errorCodes = {
