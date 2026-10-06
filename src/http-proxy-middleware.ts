@@ -22,6 +22,8 @@ export class HttpProxyMiddleware<
 > {
   private wsInternalSubscribedServers = new WeakSet<http.Server | https.Server>();
   private activeServers = new Set<http.Server | https.Server>();
+  // mount path (e.g. Express `req.baseUrl`) the middleware was reached through, per server
+  private baseUrls = new WeakMap<http.Server | https.Server, string>();
   private proxyOptions: Options<TReq, TRes>;
   private proxy: ProxyServer<TReq, TRes>;
   private pathRewriter: ReturnType<typeof createPathRewriter<TReq, TRes>>;
@@ -60,6 +62,9 @@ export class HttpProxyMiddleware<
     res: TRes,
     next?: TNext,
   ) => {
+    // Read the mount path first: Express restores `req.baseUrl` once `next()` is called.
+    const baseUrl = (req as TReq & { baseUrl?: string }).baseUrl;
+
     if (this.shouldProxy(this.proxyOptions.pathFilter, req)) {
       let activeProxyOptions: Options<TReq, TRes>;
       try {
@@ -104,6 +109,11 @@ export class HttpProxyMiddleware<
       debug('registering server close listener');
       this.activeServers.add(server);
 
+      if (baseUrl) {
+        // 'upgrade' requests bypass the framework, so remember the mount path to be able to strip it
+        this.baseUrls.set(server, baseUrl);
+      }
+
       server.on('close', () => {
         debug('server close signal received.');
         this.activeServers.delete(server);
@@ -142,7 +152,7 @@ export class HttpProxyMiddleware<
 
   private handleUpgrade = async (req: TReq, socket: net.Socket, head: Buffer) => {
     try {
-      if (this.shouldProxy(this.proxyOptions.pathFilter, req)) {
+      if (this.shouldProxyUpgrade(req)) {
         // No HTTP response object exists during WebSocket upgrades, so pass undefined.
         const activeProxyOptions = await this.prepareProxyRequest(req, undefined);
         await this.proxy.ws(req, socket, activeProxyOptions, head);
@@ -156,16 +166,57 @@ export class HttpProxyMiddleware<
   };
 
   /**
+   * Determine whether an upgrade request should be proxied.
+   *
+   * Regular requests reach the middleware with the mount path (e.g. "/a/b/c") already stripped from
+   * `req.url`; 'upgrade' requests are emitted by the server and still have it.
+   * To have `pathFilter` see the same path in both cases, match the url without the mount path first.
+   * The full url is matched as well, so filters which include the mount path keep working.
+   */
+  private shouldProxyUpgrade = (req: TReq): boolean => {
+    const { pathFilter } = this.proxyOptions;
+    const urlWithoutBase = this.stripBaseUrl(req);
+
+    return (
+      (urlWithoutBase !== undefined && this.shouldProxy(pathFilter, req, urlWithoutBase)) ||
+      this.shouldProxy(pathFilter, req)
+    );
+  };
+
+  /**
+   * Remove the remembered mount path from the request url.
+   * Returns undefined when the mount path is unknown or not part of the url.
+   */
+  private stripBaseUrl = (req: TReq): string | undefined => {
+    const server = this.#getServer(req);
+    const baseUrl = server ? this.baseUrls.get(server) : undefined;
+
+    if (!baseUrl || !req.url?.startsWith(baseUrl)) {
+      return undefined;
+    }
+
+    const rest = req.url.slice(baseUrl.length);
+
+    // only strip complete path segments: base "/ws" must not strip "/ws-path"
+    if (rest !== '' && rest[0] !== '/' && rest[0] !== '?') {
+      return undefined;
+    }
+
+    return rest[0] === '/' ? rest : `/${rest}`;
+  };
+
+  /**
    * Determine whether request should be proxied.
    */
   private shouldProxy = (
     pathFilter: Filter<TReq> | undefined,
     req: http.IncomingMessage,
+    url = req.url,
   ): boolean => {
     try {
-      return matchPathFilter(pathFilter, req.url, req);
+      return matchPathFilter(pathFilter, url, req);
     } catch (err) {
-      debug('Error: matchPathFilter() called with request url: ', `"${req.url}"`);
+      debug('Error: matchPathFilter() called with request url: ', `"${url}"`);
       this.logger.error(err);
       return false;
     }
